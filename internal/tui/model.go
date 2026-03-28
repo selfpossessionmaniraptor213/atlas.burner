@@ -19,10 +19,12 @@ type step int
 
 const (
 	stepUSB step = iota
+	stepMode      // choose catalog vs generic burn
 	stepFamily
 	stepOS
 	stepArch      // pick architecture
 	stepSource    // pick image source: download or local file
+	stepLocalFile // pick local file (generic mode)
 	stepDestDir   // pick download destination directory
 	stepDownload  // download progress
 	stepOptions   // burn options
@@ -33,10 +35,12 @@ const (
 
 var stepNames = []string{
 	"USB Device",
+	"Mode",
 	"OS Family",
 	"Operating System",
 	"Architecture",
 	"Image Source",
+	"Local File",
 	"Download Path",
 	"Download",
 	"Burn Options",
@@ -95,6 +99,10 @@ type Model struct {
 	usbCursor   int
 	usbLoading  bool
 	selectedUSB *usb.Device
+
+	// Mode
+	modeCursor  int  // 0 = catalog, 1 = generic
+	genericMode bool // true = skip catalog, just pick a local file
 
 	// OS Family
 	familyCursor   int
@@ -248,11 +256,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Back navigation (except when editing text)
 	if key == "esc" && !m.editingPath && !m.editingDest && !m.optEditing {
 		if m.step > stepUSB && m.step < stepBurning {
-			m.step--
+			prev := m.step - 1
 			// Skip download step when going back if not downloading
-			if m.step == stepDownload && !m.downloading {
-				m.step = stepDestDir
+			if prev == stepDownload && !m.downloading {
+				prev = stepDestDir
 			}
+			// In generic mode, skip catalog steps when going back
+			if m.genericMode {
+				if prev == stepSource || prev == stepArch || prev == stepOS || prev == stepFamily {
+					prev = stepMode
+				}
+				if prev == stepLocalFile {
+					prev = stepMode
+				}
+			}
+			// Skip localFile step in catalog mode
+			if !m.genericMode && prev == stepLocalFile {
+				prev = stepArch
+			}
+			m.step = prev
 			m.err = nil
 			return m, nil
 		}
@@ -261,6 +283,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.step {
 	case stepUSB:
 		return m.handleUSBKey(key)
+	case stepMode:
+		return m.handleModeKey(key)
 	case stepFamily:
 		return m.handleFamilyKey(key)
 	case stepOS:
@@ -269,6 +293,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleArchKey(key)
 	case stepSource:
 		return m.handleSourceKey(key, msg)
+	case stepLocalFile:
+		return m.handleLocalFileKey(key, msg)
 	case stepDestDir:
 		return m.handleDestDirKey(key, msg)
 	case stepDownload:
@@ -308,7 +334,59 @@ func (m Model) handleUSBKey(key string) (Model, tea.Cmd) {
 		if len(m.usbDevices) > 0 {
 			d := m.usbDevices[m.usbCursor]
 			m.selectedUSB = &d
+			m.step = stepMode
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleModeKey(key string) (Model, tea.Cmd) {
+	switch key {
+	case "up", "k":
+		if m.modeCursor > 0 {
+			m.modeCursor--
+		}
+	case "down", "j":
+		if m.modeCursor < 1 {
+			m.modeCursor++
+		}
+	case "enter":
+		if m.modeCursor == 0 {
+			m.genericMode = false
 			m.step = stepFamily
+		} else {
+			m.genericMode = true
+			m.localPath = ""
+			m.editingPath = true
+			m.step = stepLocalFile
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleLocalFileKey(key string, msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch key {
+	case "enter":
+		if m.localPath != "" {
+			m.editingPath = false
+			if _, err := os.Stat(m.localPath); err != nil {
+				m.err = fmt.Errorf("file not found: %s", m.localPath)
+				return m, nil
+			}
+			m.err = nil
+			m.step = stepOptions
+		}
+	case "esc":
+		m.editingPath = false
+		m.localPath = ""
+		m.step = stepMode
+	case "backspace":
+		if len(m.localPath) > 0 {
+			m.localPath = m.localPath[:len(m.localPath)-1]
+		}
+	default:
+		if len(msg.Runes) > 0 {
+			m.localPath += string(msg.Runes)
 		}
 	}
 	return m, nil
@@ -639,12 +717,14 @@ func (m Model) View() string {
 
 	s.WriteString(banner())
 	s.WriteString("\n")
-	s.WriteString(renderStepBar(m.step))
+	s.WriteString(m.renderStepBar())
 	s.WriteString("\n\n")
 
 	switch m.step {
 	case stepUSB:
 		s.WriteString(m.viewUSB())
+	case stepMode:
+		s.WriteString(m.viewMode())
 	case stepFamily:
 		s.WriteString(m.viewFamily())
 	case stepOS:
@@ -653,6 +733,8 @@ func (m Model) View() string {
 		s.WriteString(m.viewArch())
 	case stepSource:
 		s.WriteString(m.viewSource())
+	case stepLocalFile:
+		s.WriteString(m.viewLocalFile())
 	case stepDestDir:
 		s.WriteString(m.viewDestDir())
 	case stepDownload:
@@ -682,8 +764,12 @@ func (m Model) helpText() string {
 	switch m.step {
 	case stepUSB:
 		return "  ↑/↓ navigate  •  enter select  •  r refresh  •  ctrl+c quit"
+	case stepMode:
+		return "  ↑/↓ navigate  •  enter select  •  esc back  •  ctrl+c quit"
 	case stepFamily, stepOS, stepArch:
 		return "  ↑/↓ navigate  •  enter select  •  esc back  •  ctrl+c quit"
+	case stepLocalFile:
+		return "  type path  •  enter confirm  •  esc back  •  ctrl+c quit"
 	case stepSource:
 		if m.editingPath {
 			return "  type path  •  enter confirm  •  esc cancel"
@@ -712,14 +798,20 @@ func (m Model) helpText() string {
 }
 
 // ── Step bar ────────────────────────────────────────────────────
-func renderStepBar(current step) string {
+func (m Model) renderStepBar() string {
+	var visible []step
+	if m.genericMode {
+		visible = []step{stepUSB, stepMode, stepLocalFile, stepOptions, stepConfirm, stepBurning, stepDone}
+	} else {
+		visible = []step{stepUSB, stepMode, stepFamily, stepOS, stepArch, stepSource, stepOptions, stepConfirm, stepBurning, stepDone}
+	}
+
 	var parts []string
-	visible := []step{stepUSB, stepFamily, stepOS, stepArch, stepSource, stepOptions, stepConfirm, stepBurning, stepDone}
 	for _, s := range visible {
 		name := stepNames[s]
-		if s < current {
+		if s < m.step {
 			parts = append(parts, completedStepStyle.Render("✓ "+name))
-		} else if s == current {
+		} else if s == m.step {
 			parts = append(parts, activeStepStyle.Render("● "+name))
 		} else {
 			parts = append(parts, inactiveStepStyle.Render("○ "+name))
@@ -773,6 +865,49 @@ func (m Model) viewUSB() string {
 		}
 		s.WriteString("\n")
 	}
+	return s.String()
+}
+
+// ── Mode View ───────────────────────────────────────────────────
+func (m Model) viewMode() string {
+	var s strings.Builder
+	s.WriteString(titleStyle.Render("Select Mode"))
+	s.WriteString("\n\n")
+
+	options := []struct {
+		label string
+		desc  string
+	}{
+		{"Browse OS Catalog", "Pick from a curated list of Linux, Windows, and BSD distributions"},
+		{"Burn Local Image", "Select an ISO or IMG file already on this machine"},
+	}
+
+	for i, opt := range options {
+		if i == m.modeCursor {
+			s.WriteString(selectedItemStyle.Render("▸ " + opt.label))
+			s.WriteString("\n")
+			s.WriteString(itemDescStyle.Render("  " + opt.desc))
+		} else {
+			s.WriteString(normalItemStyle.Render("  " + opt.label))
+			s.WriteString("\n")
+			s.WriteString(itemDescStyle.Render("  " + opt.desc))
+		}
+		s.WriteString("\n")
+	}
+	return s.String()
+}
+
+// ── Local File View ─────────────────────────────────────────────
+func (m Model) viewLocalFile() string {
+	var s strings.Builder
+	s.WriteString(titleStyle.Render("Select Image File"))
+	s.WriteString("\n\n")
+
+	content := labelStyle.Render("Enter the full path to an ISO or IMG file:") + "\n\n"
+	content += valueStyle.Render(m.localPath+"█") + "\n\n"
+	content += mutedStyle.Render("Supported formats: .iso, .img, .raw, .bin")
+
+	s.WriteString(panelStyle.Render(content))
 	return s.String()
 }
 
