@@ -86,6 +86,7 @@ func BurnUEFI(isoPath, devicePath string, deviceSize uint64, progressCallback fu
 	partitionEnd := uint64(partitionStartLBA) + uint64(partitionSectors) - 34 - 1
 
 	table := &gpt.Table{
+		ProtectiveMBR: true,
 		Partitions: []*gpt.Partition{
 			{
 				Index: 1,
@@ -132,10 +133,11 @@ func BurnUEFI(isoPath, devicePath string, deviceSize uint64, progressCallback fu
 	report(0.90)
 
 	// Phase 4: Burn temp image to device (90-100%)
-	// Close the filesystem and disk to flush all writes
+	// Close the filesystem and disk image to flush all writes before burning
 	if closer, ok := fatFS.(io.Closer); ok {
 		closer.Close()
 	}
+	imgDisk.Close()
 
 	err = BurnImage(tmpPath, devicePath, func(p float64) {
 		report(0.90 + 0.10*p)

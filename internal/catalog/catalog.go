@@ -99,8 +99,8 @@ var Catalog = []OS{
 		Version: "42",
 		Format:  "ISO",
 		Variants: []Variant{
-			{Arch: ArchAMD64, DownloadURL: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-42-1.1.iso", Size: "~2.2 GB"},
-			{Arch: ArchARM64, DownloadURL: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/aarch64/iso/Fedora-Workstation-Live-aarch64-42-1.1.iso", Size: "~2.2 GB"},
+			{Arch: ArchAMD64, DownloadURL: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/x86_64/iso/Fedora-Workstation-Live-42-1.1.x86_64.iso", Size: "~2.2 GB"},
+			{Arch: ArchARM64, DownloadURL: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/aarch64/iso/Fedora-Workstation-Live-42-1.1.aarch64.iso", Size: "~2.2 GB"},
 		},
 	},
 	{
@@ -109,9 +109,8 @@ var Catalog = []OS{
 		Version: "13 (Trixie) netinst",
 		Format:  "ISO",
 		Variants: []Variant{
-			{Arch: ArchAMD64, DownloadURL: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.0.0-amd64-netinst.iso", Size: "~650 MB"},
-			{Arch: ArchARM64, DownloadURL: "https://cdimage.debian.org/debian-cd/current/arm64/iso-cd/debian-13.0.0-arm64-netinst.iso", Size: "~700 MB"},
-			{Arch: ArchI386, DownloadURL: "https://cdimage.debian.org/debian-cd/current/i386/iso-cd/debian-13.0.0-i386-netinst.iso", Size: "~650 MB"},
+			{Arch: ArchAMD64, DownloadURL: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.4.0-amd64-netinst.iso", Size: "~650 MB"},
+			{Arch: ArchARM64, DownloadURL: "https://cdimage.debian.org/debian-cd/current/arm64/iso-cd/debian-13.4.0-arm64-netinst.iso", Size: "~700 MB"},
 		},
 	},
 	{
@@ -242,7 +241,7 @@ var Catalog = []OS{
 			{Arch: ArchAMD64, DownloadURL: "https://cdn.openbsd.org/pub/OpenBSD/7.7/amd64/install77.iso", Size: "~640 MB"},
 			{Arch: ArchARM64, DownloadURL: "https://cdn.openbsd.org/pub/OpenBSD/7.7/arm64/install77.iso", Size: "~580 MB"},
 			{Arch: ArchI386, DownloadURL: "https://cdn.openbsd.org/pub/OpenBSD/7.7/i386/install77.iso", Size: "~640 MB"},
-			{Arch: ArchRISCV64, DownloadURL: "https://cdn.openbsd.org/pub/OpenBSD/7.7/riscv64/install77.iso", Size: "~580 MB"},
+			{Arch: ArchRISCV64, DownloadURL: "https://cdn.openbsd.org/pub/OpenBSD/7.7/riscv64/install77.img", Size: "~580 MB"},
 		},
 	},
 	{
