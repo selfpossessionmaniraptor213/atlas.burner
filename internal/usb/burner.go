@@ -32,15 +32,20 @@ func BurnImage(imagePath string, devicePath string, progressCallback func(float6
 	var written int64
 
 	for {
-		n, readErr := in.Read(buf)
+		// Use io.ReadFull to guarantee we read complete 4MB chunks.
+		// On Windows with FILE_FLAG_NO_BUFFERING, every write must be
+		// a multiple of 512 bytes. Plain Read() can return short reads
+		// mid-stream, causing unaligned writes to fail.
+		n, readErr := io.ReadFull(in, buf)
+
 		if n > 0 {
-			// Pad to sector alignment if this is the last chunk
 			writeLen := n
-			if readErr == io.EOF {
+
+			// Pad the final partial chunk to sector alignment
+			if readErr == io.ErrUnexpectedEOF || readErr == io.EOF {
 				remainder := n % 512
 				if remainder != 0 {
 					writeLen = n + (512 - remainder)
-					// buf is already large enough and zero-initialized beyond n
 					for i := n; i < writeLen; i++ {
 						buf[i] = 0
 					}
@@ -56,7 +61,8 @@ func BurnImage(imagePath string, devicePath string, progressCallback func(float6
 				progressCallback(float64(written) / float64(totalSize))
 			}
 		}
-		if readErr == io.EOF {
+
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
 			break
 		}
 		if readErr != nil {

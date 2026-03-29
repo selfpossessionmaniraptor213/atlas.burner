@@ -55,6 +55,7 @@ type BurnOptions struct {
 	Verify        bool   // verify checksum after burn
 	ForceUnmount  bool   // unmount device before burn
 	PartitionType string // "keep" | "mbr" | "gpt"
+	FileSystem    string // "fat32" | "ntfs" | "exfat"
 	Label         string // volume label
 }
 
@@ -70,7 +71,16 @@ var blockSizeOptions = []struct {
 	{"8 MB", 8 * 1024 * 1024},
 }
 
-var partitionOptions = []string{"Keep original", "MBR", "GPT"}
+var partitionOptions = []string{"Keep original", "MBR", "UEFI (GPT/FAT32)"}
+
+var filesystemOptions = []struct {
+	label string
+	value string
+}{
+	{"FAT32", "fat32"},
+	{"NTFS", "ntfs"},
+	{"exFAT", "exfat"},
+}
 
 // ── Messages ────────────────────────────────────────────────────
 type usbLoadedMsg struct {
@@ -101,8 +111,9 @@ type Model struct {
 	selectedUSB *usb.Device
 
 	// Mode
-	modeCursor  int  // 0 = catalog, 1 = generic
+	modeCursor  int  // 0 = catalog, 1 = generic, 2 = format
 	genericMode bool // true = skip catalog, just pick a local file
+	formatMode  bool // true = format only, no image burn
 
 	// OS Family
 	familyCursor   int
@@ -156,6 +167,7 @@ func NewModel() Model {
 			Verify:        true,
 			ForceUnmount:  true,
 			PartitionType: "keep",
+			FileSystem:    "fat32",
 		},
 		destDir:      filepath.Join(home, "Downloads"),
 		burnProgress: new(float64),
@@ -261,6 +273,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if prev == stepDownload && !m.downloading {
 				prev = stepDestDir
 			}
+			// In format mode, go back to mode selection from options
+			if m.formatMode {
+				if prev != stepMode && prev != stepConfirm && prev != stepBurning {
+					prev = stepMode
+				}
+			}
 			// In generic mode, skip catalog steps when going back
 			if m.genericMode {
 				if prev == stepSource || prev == stepArch || prev == stepOS || prev == stepFamily {
@@ -347,18 +365,26 @@ func (m Model) handleModeKey(key string) (Model, tea.Cmd) {
 			m.modeCursor--
 		}
 	case "down", "j":
-		if m.modeCursor < 1 {
+		if m.modeCursor < 2 {
 			m.modeCursor++
 		}
 	case "enter":
-		if m.modeCursor == 0 {
+		switch m.modeCursor {
+		case 0:
 			m.genericMode = false
+			m.formatMode = false
 			m.step = stepFamily
-		} else {
+		case 1:
 			m.genericMode = true
+			m.formatMode = false
 			m.localPath = ""
 			m.editingPath = true
 			m.step = stepLocalFile
+		case 2:
+			m.genericMode = false
+			m.formatMode = true
+			m.options.PartitionType = "gpt" // Format mode defaults to GPT
+			m.step = stepOptions
 		}
 	}
 	return m, nil
@@ -567,9 +593,26 @@ func (m Model) startDownload() (Model, tea.Cmd) {
 
 func (m Model) handleOptionsKey(key string, msg tea.KeyMsg) (Model, tea.Cmd) {
 	optionCount := 5
+	if m.formatMode {
+		optionCount = 3 // partition table, filesystem, volume label
+	}
+
+	// Map visual cursor to logical option index
+	resolveOptIndex := func(cursor int) int {
+		if m.formatMode {
+			// Format mode: 0->partition(3), 1->filesystem(5), 2->label(4)
+			mapping := []int{3, 5, 4}
+			if cursor < len(mapping) {
+				return mapping[cursor]
+			}
+			return -1
+		}
+		return cursor
+	}
+	logicalIdx := resolveOptIndex(m.optCursor)
 
 	if m.optEditing {
-		switch m.optCursor {
+		switch logicalIdx {
 		case 0: // block size
 			switch key {
 			case "up", "k":
@@ -587,18 +630,54 @@ func (m Model) handleOptionsKey(key string, msg tea.KeyMsg) (Model, tea.Cmd) {
 				m.optEditing = false
 			}
 		case 3: // partition type
+			if m.formatMode {
+				// Format mode: only MBR and GPT (no "keep")
+				switch key {
+				case "up", "k":
+					if m.optSubCursor > 0 {
+						m.optSubCursor--
+					}
+				case "down", "j":
+					if m.optSubCursor < 1 {
+						m.optSubCursor++
+					}
+				case "enter":
+					val := []string{"mbr", "gpt"}
+					m.options.PartitionType = val[m.optSubCursor]
+					m.optEditing = false
+				case "esc":
+					m.optEditing = false
+				}
+			} else {
+				switch key {
+				case "up", "k":
+					if m.optSubCursor > 0 {
+						m.optSubCursor--
+					}
+				case "down", "j":
+					if m.optSubCursor < len(partitionOptions)-1 {
+						m.optSubCursor++
+					}
+				case "enter":
+					val := []string{"keep", "mbr", "gpt"}
+					m.options.PartitionType = val[m.optSubCursor]
+					m.optEditing = false
+				case "esc":
+					m.optEditing = false
+				}
+			}
+		case 5: // filesystem
 			switch key {
 			case "up", "k":
 				if m.optSubCursor > 0 {
 					m.optSubCursor--
 				}
 			case "down", "j":
-				if m.optSubCursor < len(partitionOptions)-1 {
+				if m.optSubCursor < len(filesystemOptions)-1 {
 					m.optSubCursor++
 				}
 			case "enter":
-				val := []string{"keep", "mbr", "gpt"}
-				m.options.PartitionType = val[m.optSubCursor]
+				m.options.FileSystem = filesystemOptions[m.optSubCursor].value
 				m.optEditing = false
 			case "esc":
 				m.optEditing = false
@@ -632,7 +711,7 @@ func (m Model) handleOptionsKey(key string, msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.optCursor++
 		}
 	case "enter":
-		switch m.optCursor {
+		switch logicalIdx {
 		case 0:
 			m.optEditing = true
 			for i, bs := range blockSizeOptions {
@@ -647,19 +726,36 @@ func (m Model) handleOptionsKey(key string, msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.options.ForceUnmount = !m.options.ForceUnmount
 		case 3:
 			m.optEditing = true
-			switch m.options.PartitionType {
-			case "keep":
-				m.optSubCursor = 0
-			case "mbr":
-				m.optSubCursor = 1
-			case "gpt":
-				m.optSubCursor = 2
+			if m.formatMode {
+				switch m.options.PartitionType {
+				case "mbr":
+					m.optSubCursor = 0
+				default:
+					m.optSubCursor = 1
+				}
+			} else {
+				switch m.options.PartitionType {
+				case "keep":
+					m.optSubCursor = 0
+				case "mbr":
+					m.optSubCursor = 1
+				case "gpt":
+					m.optSubCursor = 2
+				}
+			}
+		case 5:
+			m.optEditing = true
+			for i, fs := range filesystemOptions {
+				if fs.value == m.options.FileSystem {
+					m.optSubCursor = i
+					break
+				}
 			}
 		case 4:
 			m.optEditing = true
 		}
 	case " ":
-		switch m.optCursor {
+		switch logicalIdx {
 		case 1:
 			m.options.Verify = !m.options.Verify
 		case 2:
@@ -682,7 +778,10 @@ func (m Model) handleConfirmKey(key string) (Model, tea.Cmd) {
 }
 
 func (m Model) startBurning() (Model, tea.Cmd) {
-	if m.selectedUSB == nil || m.localPath == "" {
+	if m.selectedUSB == nil {
+		return m, nil
+	}
+	if !m.formatMode && m.localPath == "" {
 		return m, nil
 	}
 
@@ -693,14 +792,28 @@ func (m Model) startBurning() (Model, tea.Cmd) {
 	m.step = stepBurning
 
 	devicePath := m.selectedUSB.Path
+	deviceSize := m.selectedUSB.Size
 	imagePath := m.localPath
-	progressPtr := m.burnProgress // shared pointer between goroutine and model
+	progressPtr := m.burnProgress
+	options := m.options
+	isFormatMode := m.formatMode
 
 	return m, tea.Batch(
 		func() tea.Msg {
-			err := usb.BurnImage(imagePath, devicePath, func(progress float64) {
-				*progressPtr = progress
-			})
+			var err error
+			if isFormatMode {
+				err = usb.FormatDevice(devicePath, deviceSize, options.PartitionType, options.FileSystem, options.Label, func(progress float64) {
+					*progressPtr = progress
+				})
+			} else if options.PartitionType == "gpt" {
+				err = usb.BurnUEFI(imagePath, devicePath, deviceSize, func(progress float64) {
+					*progressPtr = progress
+				})
+			} else {
+				err = usb.BurnImage(imagePath, devicePath, func(progress float64) {
+					*progressPtr = progress
+				})
+			}
 			return burnDoneMsg{err: err}
 		},
 		tickBurn(),
@@ -800,7 +913,9 @@ func (m Model) helpText() string {
 // ── Step bar ────────────────────────────────────────────────────
 func (m Model) renderStepBar() string {
 	var visible []step
-	if m.genericMode {
+	if m.formatMode {
+		visible = []step{stepUSB, stepMode, stepOptions, stepConfirm, stepBurning, stepDone}
+	} else if m.genericMode {
 		visible = []step{stepUSB, stepMode, stepLocalFile, stepOptions, stepConfirm, stepBurning, stepDone}
 	} else {
 		visible = []step{stepUSB, stepMode, stepFamily, stepOS, stepArch, stepSource, stepOptions, stepConfirm, stepBurning, stepDone}
@@ -880,6 +995,7 @@ func (m Model) viewMode() string {
 	}{
 		{"Browse OS Catalog", "Pick from a curated list of Linux, Windows, and BSD distributions"},
 		{"Burn Local Image", "Select an ISO or IMG file already on this machine"},
+		{"Format Drive", "Format the USB drive with a fresh partition table and filesystem"},
 	}
 
 	for i, opt := range options {
@@ -1109,12 +1225,17 @@ func (m Model) viewDownload() string {
 // ── Options View ────────────────────────────────────────────────
 func (m Model) viewOptions() string {
 	var s strings.Builder
-	s.WriteString(titleStyle.Render("Burn Options"))
+	if m.formatMode {
+		s.WriteString(titleStyle.Render("Format Options"))
+	} else {
+		s.WriteString(titleStyle.Render("Burn Options"))
+	}
 	s.WriteString("\n\n")
 
 	type optionLine struct {
-		label string
-		value string
+		label    string
+		value    string
+		optIndex int // maps to the original option index for editing logic
 	}
 
 	bsLabel := "4 MB (default)"
@@ -1130,7 +1251,7 @@ func (m Model) viewOptions() string {
 	case "mbr":
 		ptLabel = "MBR"
 	case "gpt":
-		ptLabel = "GPT"
+		ptLabel = "UEFI (GPT/FAT32)"
 	}
 
 	labelVal := m.options.Label
@@ -1138,12 +1259,29 @@ func (m Model) viewOptions() string {
 		labelVal = "(none)"
 	}
 
-	opts := []optionLine{
-		{"Block Size", bsLabel},
-		{"Verify After Burn", boolIcon(m.options.Verify)},
-		{"Force Unmount", boolIcon(m.options.ForceUnmount)},
-		{"Partition Table", ptLabel},
-		{"Volume Label", labelVal},
+	fsLabel := "FAT32"
+	for _, fs := range filesystemOptions {
+		if fs.value == m.options.FileSystem {
+			fsLabel = fs.label
+			break
+		}
+	}
+
+	var opts []optionLine
+	if m.formatMode {
+		opts = []optionLine{
+			{"Partition Table", ptLabel, 3},
+			{"File System", fsLabel, 5},
+			{"Volume Label", labelVal, 4},
+		}
+	} else {
+		opts = []optionLine{
+			{"Block Size", bsLabel, 0},
+			{"Verify After Burn", boolIcon(m.options.Verify), 1},
+			{"Force Unmount", boolIcon(m.options.ForceUnmount), 2},
+			{"Partition Table", ptLabel, 3},
+			{"Volume Label", labelVal, 4},
+		}
 	}
 
 	for i, opt := range opts {
@@ -1158,7 +1296,7 @@ func (m Model) viewOptions() string {
 		s.WriteString("\n")
 
 		if m.optEditing && i == m.optCursor {
-			switch i {
+			switch opt.optIndex {
 			case 0:
 				for j, bs := range blockSizeOptions {
 					if j == m.optSubCursor {
@@ -1169,11 +1307,24 @@ func (m Model) viewOptions() string {
 					s.WriteString("\n")
 				}
 			case 3:
-				for j, pt := range partitionOptions {
+				showOpts := partitionOptions
+				if m.formatMode {
+					showOpts = []string{"MBR", "UEFI (GPT/FAT32)"}
+				}
+				for j, pt := range showOpts {
 					if j == m.optSubCursor {
 						s.WriteString(selectedItemStyle.Render("      ▸ " + pt))
 					} else {
 						s.WriteString(normalItemStyle.Render("        " + pt))
+					}
+					s.WriteString("\n")
+				}
+			case 5: // filesystem
+				for j, fs := range filesystemOptions {
+					if j == m.optSubCursor {
+						s.WriteString(selectedItemStyle.Render("      ▸ " + fs.label))
+					} else {
+						s.WriteString(normalItemStyle.Render("        " + fs.label))
 					}
 					s.WriteString("\n")
 				}
@@ -1197,42 +1348,80 @@ func (m Model) viewConfirm() string {
 	content.WriteString(dangerStyle.Render("⚠  WARNING: This will ERASE ALL DATA on the target device!"))
 	content.WriteString("\n\n")
 
-	if m.selectedOS != nil {
-		content.WriteString(labelStyle.Render("Image:   "))
-		content.WriteString(valueStyle.Render(m.selectedOS.Name + " " + m.selectedOS.Version))
+	if m.formatMode {
+		content.WriteString(labelStyle.Render("Action:  "))
+		content.WriteString(valueStyle.Render("Format Drive"))
+		content.WriteString("\n")
+	} else {
+		if m.selectedOS != nil {
+			content.WriteString(labelStyle.Render("Image:   "))
+			content.WriteString(valueStyle.Render(m.selectedOS.Name + " " + m.selectedOS.Version))
+			content.WriteString("\n")
+		}
+		if m.selectedVariant != nil {
+			content.WriteString(labelStyle.Render("Arch:    "))
+			content.WriteString(valueStyle.Render(string(m.selectedVariant.Arch)))
+			content.WriteString("\n")
+		}
+		content.WriteString(labelStyle.Render("Source:  "))
+		content.WriteString(valueStyle.Render(m.localPath))
 		content.WriteString("\n")
 	}
-	if m.selectedVariant != nil {
-		content.WriteString(labelStyle.Render("Arch:    "))
-		content.WriteString(valueStyle.Render(string(m.selectedVariant.Arch)))
-		content.WriteString("\n")
-	}
-	content.WriteString(labelStyle.Render("Source:  "))
-	content.WriteString(valueStyle.Render(m.localPath))
-	content.WriteString("\n")
 	if m.selectedUSB != nil {
 		content.WriteString(labelStyle.Render("Target:  "))
 		content.WriteString(dangerStyle.Render(m.selectedUSB.String()))
 		content.WriteString("\n")
 	}
 
-	bsLabel := "4 MB"
-	for _, bs := range blockSizeOptions {
-		if bs.value == m.options.BlockSize {
-			bsLabel = bs.label
-			break
+	ptLabel := "Keep original"
+	switch m.options.PartitionType {
+	case "mbr":
+		ptLabel = "MBR"
+	case "gpt":
+		ptLabel = "UEFI (GPT/FAT32)"
+	}
+	content.WriteString(labelStyle.Render("Format:  "))
+	content.WriteString(mutedStyle.Render(ptLabel))
+	content.WriteString("\n")
+
+	if m.formatMode {
+		fsLabel := "FAT32"
+		for _, fs := range filesystemOptions {
+			if fs.value == m.options.FileSystem {
+				fsLabel = fs.label
+				break
+			}
 		}
+		content.WriteString(labelStyle.Render("FileSys: "))
+		content.WriteString(mutedStyle.Render(fsLabel))
+		content.WriteString("\n")
+	}
+
+	if !m.formatMode {
+		bsLabel := "4 MB"
+		for _, bs := range blockSizeOptions {
+			if bs.value == m.options.BlockSize {
+				bsLabel = bs.label
+				break
+			}
+		}
+		content.WriteString(labelStyle.Render("Block:   "))
+		content.WriteString(mutedStyle.Render(bsLabel))
+		content.WriteString("\n")
+		content.WriteString(labelStyle.Render("Verify:  "))
+		content.WriteString(mutedStyle.Render(boolIcon(m.options.Verify)))
+		content.WriteString("\n")
+		content.WriteString(labelStyle.Render("Unmount: "))
+		content.WriteString(mutedStyle.Render(boolIcon(m.options.ForceUnmount)))
+		content.WriteString("\n")
+	}
+
+	if m.options.Label != "" {
+		content.WriteString(labelStyle.Render("Label:   "))
+		content.WriteString(mutedStyle.Render(m.options.Label))
+		content.WriteString("\n")
 	}
 	content.WriteString("\n")
-	content.WriteString(labelStyle.Render("Block:   "))
-	content.WriteString(mutedStyle.Render(bsLabel))
-	content.WriteString("\n")
-	content.WriteString(labelStyle.Render("Verify:  "))
-	content.WriteString(mutedStyle.Render(boolIcon(m.options.Verify)))
-	content.WriteString("\n")
-	content.WriteString(labelStyle.Render("Unmount: "))
-	content.WriteString(mutedStyle.Render(boolIcon(m.options.ForceUnmount)))
-	content.WriteString("\n\n")
 
 	content.WriteString(keyStyle.Render("y"))
 	content.WriteString(mutedStyle.Render(" to confirm  •  "))
@@ -1246,10 +1435,20 @@ func (m Model) viewConfirm() string {
 // ── Burning View ────────────────────────────────────────────────
 func (m Model) viewBurning() string {
 	var s strings.Builder
-	s.WriteString(titleStyle.Render("Burning Image"))
+	if m.formatMode {
+		s.WriteString(titleStyle.Render("Formatting Drive"))
+	} else {
+		s.WriteString(titleStyle.Render("Burning Image"))
+	}
 	s.WriteString("\n\n")
 
-	if m.selectedOS != nil {
+	if m.formatMode {
+		if m.selectedUSB != nil {
+			s.WriteString(labelStyle.Render("  Formatting "))
+			s.WriteString(valueStyle.Render(m.selectedUSB.Name))
+			s.WriteString("\n\n")
+		}
+	} else if m.selectedOS != nil {
 		s.WriteString(labelStyle.Render("  " + m.selectedOS.Name + " " + m.selectedOS.Version))
 		if m.selectedVariant != nil {
 			s.WriteString(mutedStyle.Render("  [" + string(m.selectedVariant.Arch) + "]"))
@@ -1277,7 +1476,11 @@ func (m Model) viewBurning() string {
 	s.WriteString("\n\n")
 
 	if m.burning {
-		s.WriteString(dangerStyle.Render("  🔥 Writing to device — do NOT remove the USB drive!"))
+		if m.formatMode {
+			s.WriteString(dangerStyle.Render("  🔥 Formatting device — do NOT remove the USB drive!"))
+		} else {
+			s.WriteString(dangerStyle.Render("  🔥 Writing to device — do NOT remove the USB drive!"))
+		}
 	}
 
 	return s.String()
@@ -1293,9 +1496,13 @@ func (m Model) viewDone() string {
 		s.WriteString(panelStyle.Render(content))
 	} else {
 		var content strings.Builder
-		content.WriteString(successStyle.Render("✓ Burn completed successfully!"))
+		if m.formatMode {
+			content.WriteString(successStyle.Render("✓ Format completed successfully!"))
+		} else {
+			content.WriteString(successStyle.Render("✓ Burn completed successfully!"))
+		}
 		content.WriteString("\n\n")
-		if m.selectedOS != nil {
+		if !m.formatMode && m.selectedOS != nil {
 			content.WriteString(labelStyle.Render("Image:  "))
 			content.WriteString(valueStyle.Render(m.selectedOS.Name + " " + m.selectedOS.Version))
 			if m.selectedVariant != nil {
@@ -1309,7 +1516,11 @@ func (m Model) viewDone() string {
 			content.WriteString("\n")
 		}
 		content.WriteString("\n")
-		content.WriteString(mutedStyle.Render("You can now safely remove the USB device and boot from it."))
+		if m.formatMode {
+			content.WriteString(mutedStyle.Render("You can now safely remove the USB device."))
+		} else {
+			content.WriteString(mutedStyle.Render("You can now safely remove the USB device and boot from it."))
+		}
 		s.WriteString(successPanelStyle.Render(content.String()))
 	}
 
